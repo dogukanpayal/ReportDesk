@@ -4,98 +4,98 @@ import path from 'path';
 import fs from 'fs';
 import { Op } from 'sequelize';
 import sequelize from '../utils/db.js';
-import { triggerAIAnalysis } from '../services/aiService.js';
+// --- YENİ EKLENEN IMPORT ---
+import { triggerAIAnalysis } from '../services/aiService.js'; 
 
 // Bugünün tarihini YYYY-MM-DD formatında al
 function getTodayDate() {
-  const today = new Date();
-  
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, '0');
-  const day = String(today.getDate()).padStart(2, '0');
-  
-  return `${year}-${month}-${day}`;
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
 }
 
-// Supabase removed - using local file storage
-
 const getPagination = (page, size) => {
-  const limit = size ? +size : 10; // Default limit is 10
-  const offset = page ? (page - 1) * limit : 0;
-  return { limit, offset };
+    const limit = size ? +size : 10;
+    const offset = page ? (page - 1) * limit : 0;
+    return { limit, offset };
 };
 
 const getPagingData = (data, page, limit) => {
-  const { count: totalItems, rows: reports } = data;
-  const currentPage = page ? +page : 1;
-  const totalPages = Math.ceil(totalItems / limit);
-  return { totalItems, reports, totalPages, currentPage };
+    const { count: totalItems, rows: reports } = data;
+    const currentPage = page ? +page : 1;
+    const totalPages = Math.ceil(totalItems / limit);
+    return { totalItems, reports, totalPages, currentPage };
 };
 
 export async function uploadReport(req, res) {
-  if (!req.file) return res.status(400).json({ message: 'File is required' });
-  
-  // Input validation
-  const { notes } = req.body;
-  
-  // Notlar validasyonu
-  if (notes !== undefined) {
-    if (typeof notes !== 'string') {
-      return res.status(400).json({ 
-        message: 'Notlar string formatında olmalıdır',
-        error: 'INVALID_NOTES_TYPE'
-      });
+    if (!req.file) return res.status(400).json({ message: 'File is required' });
+
+    // Input validation
+    const { notes } = req.body;
+
+    // Notlar validasyonu
+    if (notes !== undefined) {
+        if (typeof notes !== 'string') {
+            return res.status(400).json({
+                message: 'Notlar string formatında olmalıdır',
+                error: 'INVALID_NOTES_TYPE'
+            });
+        }
     }
-    
-    if (notes.length > 255) {
-      return res.status(400).json({ 
-        message: 'Notlar 255 karakterden uzun olamaz',
-        error: 'NOTES_TOO_LONG'
-      });
+
+    if (notes && notes.length > 255) {
+        return res.status(400).json({
+            message: 'Notlar 255 karakterden uzun olamaz',
+            error: 'NOTES_TOO_LONG'
+        });
     }
-    
-    // XSS koruması - tehlikeli karakterler
+
+    // XSS koruması
     const dangerousChars = /<script|javascript:|on\w+\s*=/i;
-    if (dangerousChars.test(notes)) {
-      return res.status(400).json({ 
-        message: 'Notlar güvenli olmayan karakterler içeriyor',
-        error: 'UNSAFE_NOTES'
-      });
+    if (notes && dangerousChars.test(notes)) {
+        return res.status(400).json({
+            message: 'Notlar güvenli olmayan karakterler içeriyor',
+            error: 'UNSAFE_NOTES'
+        });
     }
-  }
-  
-  try {
-    // req.user'dan kullanıcı bilgilerini al
-    const { id: userId, firstName, lastName } = req.user;
 
-    // Tarih oluşturma - doğal tarih kullan
-    const currentDate = new Date();
-    
-    const report = await Report.create({
-      filePath: req.file.filename,
-      originalFileName: req.file.originalname, // Orijinal dosya adını kaydet
-      notes: notes || null, // Validated notes
-      status: 'Not Reviewed', // Status'u Not Reviewed olarak set et
-      userId: userId,
-      date: currentDate, // Doğal tarih
-      uploader_first_name: firstName, // Mevcut sütunu kullan
-      uploader_last_name: lastName,   // Mevcut sütunu kullan
-    });
+    try {
+        const { id: userId, firstName, lastName } = req.user;
+        const currentDate = new Date();
 
-    triggerAIAnalysis({
+        // 1. Raporu Veritabanına Kaydet
+        const report = await Report.create({
+            filePath: req.file.filename,
+            originalFileName: req.file.originalname,
+            notes: notes || null,
+            status: 'Not Reviewed',
+            userId: userId,
+            date: currentDate,
+            uploader_first_name: firstName,
+            uploader_last_name: lastName,
+        });
+
+        // 2. --- AI ANALİZİNİ TETİKLE ---
+        // await kullanmıyoruz, böylece kullanıcı bekletilmeden yanıt alıyor.
+        // İşlem arka planda devam ediyor.
+        triggerAIAnalysis({
             id: report.id,
             filePath: report.filePath,
             originalFileName: report.originalFileName
         });
-    
-    res.status(201).json(report);
-  } catch (error) {
-    console.error('Error creating report:', error.message);
-    res.status(500).json({ 
-      message: 'Rapor oluşturulurken hata oluştu',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
-  }
+        // ------------------------------
+
+        res.status(201).json(report);
+
+    } catch (error) {
+        console.error('Error creating report:', error.message);
+        res.status(500).json({
+            message: 'Rapor oluşturulurken hata oluştu',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
 }
 
 export const getAllReports = async (req, res) => {
@@ -163,7 +163,7 @@ export const getAllReports = async (req, res) => {
       attributes: [
         'id', 'filePath', 'notes', 'status', 'date', 'userId',
         'created_at', 'updated_at', 'uploader_first_name', 'uploader_last_name',
-        'originalFileName'
+        'originalFileName', 'ai_summary'
       ],
       include: [{
         model: User,
@@ -288,7 +288,7 @@ export async function getMyReports(req, res) {
       attributes: [
         'id', 'filePath', 'notes', 'status', 'date', 'userId',
         'created_at', 'updated_at', 'uploader_first_name', 'uploader_last_name',
-        'originalFileName'
+        'originalFileName', 'ai_summary'
       ],
       include: [{ 
         model: User, 

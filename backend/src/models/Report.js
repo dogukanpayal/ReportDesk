@@ -35,6 +35,11 @@ const Report = sequelize.define('Report', {
     allowNull: false,
     defaultValue: 'Submitted',
   },
+  aiSummary: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    field: 'ai_summary' // Veritabanındaki adı
+  },
   date: {
     type: DataTypes.DATEONLY,
     allowNull: false,

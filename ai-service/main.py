@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import os
 import pdfplumber
+from transformers import pipeline
 
 app = FastAPI(title="Report Desk AI Service")
 
@@ -12,8 +13,11 @@ class AnalysisRequest(BaseModel):
     original_name: str
 
 # Raporların yüklendiği klasörün yolu (backend/uploads)
-# ai-service klasöründen bir yukarı çık (..), sonra backend/uploads'a gir
 UPLOAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "backend", "uploads"))
+
+# Modeli global olarak bir kez yüklüyoruz
+print("Yapay Zeka Modeli Yükleniyor... (İlk açılışta yavaş olabilir)")
+summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
 
 def extract_text_from_pdf(file_path: str):
     """PDF dosyasından metin çıkarır."""
@@ -26,6 +30,22 @@ def extract_text_from_pdf(file_path: str):
     except Exception as e:
         print(f"PDF Okuma Hatası: {e}")
         return None
+
+def summarize_text(text):
+    """Metni yapay zeka ile özetler."""
+    if len(text) < 200:
+        return "Metin özetlemek için çok kısa."
+    
+    try:
+        # Maksimum 1024 karakteri modele veriyoruz (Performans için)
+        input_text = text[:1024] 
+        
+        # Özetleme işlemi
+        summary = summarizer(input_text, max_length=130, min_length=30, do_sample=False)
+        return summary[0]['summary_text']
+    except Exception as e:
+        print(f"Özetleme Hatası: {e}")
+        return "Özet çıkarılamadı."
 
 @app.post("/analyze")
 async def analyze_report(request: AnalysisRequest):
@@ -48,13 +68,18 @@ async def analyze_report(request: AnalysisRequest):
     else:
         extracted_text = "Şimdilik sadece PDF analizi destekleniyor."
 
-    # 4. Sonucu (veya özeti) Node.js'e dön
-    # İleride burada Özetleme (Summarization) yapacağız.
+    # 4. Yapay Zeka ile Özetle (BURAYI EKLEDİK)
+    summary_result = ""
+    if extracted_text and len(extracted_text) > 50:
+        print("Yapay Zeka Özetliyor...")
+        summary_result = summarize_text(extracted_text)
+        print(f"Özet: {summary_result}")
+    
     return {
         "message": "Analiz tamamlandı",
         "report_id": request.report_id,
-        "text_preview": extracted_text[:200], # Node.js loglarında görmek için ilk 200 karakter
-        "character_count": len(extracted_text)
+        "text_preview": extracted_text[:200],
+        "summary": summary_result  # <--- Yeni eklenen özet alanı
     }
 
 if __name__ == "__main__":

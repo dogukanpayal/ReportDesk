@@ -257,6 +257,28 @@ export default function ReportDetailModal({ report, onClose, open = true }) {
             </Typography>
           </Box>
 
+          {/* --- YAPAY ZEKA ÖZETİ (YENİ) --- */}
+          {report.ai_summary && (
+              <Box sx={{
+                  p: { xs: 1.5, md: 2 },
+                  backgroundColor: '#E3F2FD', // Açık mavi (Yapay Zeka rengi)
+                  borderRadius: 2,
+                  border: '1px solid #BBDEFB',
+                  mt: 2
+              }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                      {/* Şık bir başlık */}
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#1565C0' }}>
+                          ✨ Yapay Zeka Özeti
+                      </Typography>
+                  </Box>
+                  <Typography variant="body2" sx={{ color: '#0D47A1', pl: 0 }}>
+                      {report.ai_summary}
+                  </Typography>
+              </Box>
+          )}
+          {/* -------------------------------- */}
+
           {/* Dosya Bilgisi */}
           <Box sx={{
             p: { xs: 1.5, md: 2 },
