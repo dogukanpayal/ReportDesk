@@ -196,3 +196,34 @@ workbox-*.js
 # Service worker
 sw.js.map
 workbox-*.js.map
+
+# --- GENEL ---
+.DS_Store
+.env
+.vscode/
+.idea/
+
+# --- NODE.JS (Frontend & Backend) ---
+node_modules/
+npm-debug.log
+yarn-error.log
+build/
+dist/
+.eslintcache
+
+# --- PYTHON (AI Service) ---
+# Sanal ortam klasörleri (Github'a asla atılmaz)
+venv/
+.venv/
+env/
+
+# Python önbellek dosyaları
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# --- UYGULAMA VERİLERİ ---
+# Upload edilen dosyaları gönderme, ama klasör yapısını koru
+backend/uploads/*
+!backend/uploads/.gitkeep
