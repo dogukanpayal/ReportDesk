@@ -2,10 +2,20 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import os
 import pdfplumber
-import re
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
+import google.generativeai as genai
+from dotenv import load_dotenv
 
-app = FastAPI(title="Report Desk AI Service")
+# .env dosyasını yükle (API Key güvenliği için)
+load_dotenv()
+
+app = FastAPI(title="Report Desk AI Service (Gemini)")
+
+# API Key Kontrolü
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if not GEMINI_API_KEY:
+    print("UYARI: GEMINI_API_KEY bulunamadı! Lütfen .env dosyasını kontrol et.")
+else:
+    genai.configure(api_key=GEMINI_API_KEY)
 
 class AnalysisRequest(BaseModel):
     report_id: int
@@ -14,78 +24,50 @@ class AnalysisRequest(BaseModel):
 
 UPLOAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "backend", "uploads"))
 
-# --- UZMAN ÖZETLEME MODELİ ---
-# Bu model Türkçe dahil 45 dilde özetleme yapmak için özel eğitilmiştir.
-print("Yapay Zeka Modeli Yükleniyor... (csebuetnlp/mT5_multilingual_XLSum)")
-model_name = "csebuetnlp/mT5_multilingual_XLSum"
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
-
-# Pipeline oluşturma
-summarizer = pipeline("summarization", model=model, tokenizer=tokenizer)
-
-def clean_text(text):
-    """Metni temizler ve gürültüden arındırır."""
-    if not text: return ""
-    
-    # 1. PDF'ten gelen (cid:123) gibi bozuk karakterleri sil
-    text = re.sub(r'\(cid:\d+\)', '', text)
-    
-    # 2. Satır sonlarını boşlukla değiştir
-    text = text.replace('\n', ' ')
-    
-    # 3. Fazla boşlukları temizle
-    text = re.sub(r'\s+', ' ', text).strip()
-    
-    return text
-
 def extract_text_from_pdf(file_path: str):
+    """PDF dosyasından metin ayıklar."""
     full_text = ""
     try:
         with pdfplumber.open(file_path) as pdf:
             for page in pdf.pages:
                 extracted = page.extract_text()
                 if extracted:
-                    full_text += extracted + " "
-        return clean_text(full_text)
+                    full_text += extracted + "\n"
+        return full_text
     except Exception as e:
         print(f"PDF Okuma Hatası: {e}")
         return None
 
-def summarize_text(text):
-    if len(text) < 50: return "İçerik çok kısa."
+def summarize_with_gemini(text):
+    """Gemini API kullanarak metni özetler."""
+    if not text or len(text) < 50:
+        return "İçerik özet çıkarmak için çok kısa."
 
     try:
-        # Tokenizer ile metni tokenlara ayır
-        # XLSum modeli için metni 512 token ile sınırlıyoruz
-        input_ids = tokenizer.encode(text, return_tensors="pt", max_length=512, truncation=True)
+        # Gemini 1.5 Flash modeli hızlı ve ücretsiz katman için idealdir
+        model = genai.GenerativeModel('gemini-flash-latest')       
+        prompt = f"""
+        Aşağıdaki metni kurumsal bir rapor formatında, Türkçe olarak özetle. 
+        Önemli noktaları vurgula ve gereksiz detaylardan kaçın.
         
-        # Modele özel bir prefix (ön ek) vermemize gerek yok, direkt metni veriyoruz.
-        # Ancak pipeline içinde truncate edilmiş metni kullanmalıyız.
-        truncated_text = tokenizer.decode(input_ids[0], skip_special_tokens=True)
-
-        summary = summarizer(
-            truncated_text, 
-            max_length=84,   # Kısa ve öz bir özet (Başlık gibi)
-            min_length=10,   # Çok kısa olmasın
-            do_sample=False, # Rastgelelik kapalı (Tutarlı sonuç)
-            num_beams=2,     # En iyi cümleyi bulmak için 2 yol dene
-            truncation=True
-        )[0]['summary_text']
+        Metin:
+        {text}
+        """
         
-        return summary
-
+        response = model.generate_content(prompt)
+        
+        return response.text
     except Exception as e:
-        print(f"Özetleme hatası: {e}")
-        return "Özet oluşturulamadı."
+        print(f"Gemini Hatası: {e}")
+        return "Yapay zeka servisine erişilemedi veya bir hata oluştu."
 
 @app.post("/analyze")
 async def analyze_report(request: AnalysisRequest):
-    print(f"--- Rapor {request.report_id} İşleniyor ---")
+    print(f"--- Rapor {request.report_id} İşleniyor (Gemini) ---")
     full_file_path = os.path.join(UPLOAD_DIR, request.file_path)
     
     if not os.path.exists(full_file_path):
-        raise HTTPException(status_code=404, detail="Dosya yok")
+        raise HTTPException(status_code=404, detail="Dosya sunucuda bulunamadı")
 
     extracted_text = ""
     if request.file_path.lower().endswith(".pdf"):
@@ -93,16 +75,16 @@ async def analyze_report(request: AnalysisRequest):
     
     summary_result = ""
     if extracted_text and len(extracted_text) > 30:
-        print("Özetleniyor...")
-        summary_result = summarize_text(extracted_text)
-        print(f"SONUÇ: {summary_result}")
+        print("Gemini'ye gönderiliyor...")
+        summary_result = summarize_with_gemini(extracted_text)
+        print("Özet başarıyla alındı.")
     else:
-        summary_result = "Okunabilir metin yok."
+        summary_result = "Okunabilir metin bulunamadı."
     
     return {
         "message": "Tamamlandı",
         "report_id": request.report_id,
-        "text_preview": extracted_text[:100],
+        "text_preview": extracted_text[:100] if extracted_text else "",
         "summary": summary_result
     }
 

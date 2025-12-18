@@ -1,0 +1,31 @@
+# --- Python Derleme Dosyaları ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Sanal Ortam (Virtual Environment) ---
+# Bilgisayarına kurduğun kütüphanelerin olduğu klasör
+venv/
+.venv/
+env/
+.env/
+
+# --- Çevresel Değişkenler (GİZLİLİK İÇİN KRİTİK) ---
+# API Key'inin olduğu dosya ASLA yüklenmemeli
+.env
+.env.local
+.env.*
+
+# --- IDE ve Editör Ayarları ---
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# --- Log Dosyaları ---
+*.log
+
+# --- Paketleme ve Dağıtım ---
+dist/
+build/
+*.egg-info/
