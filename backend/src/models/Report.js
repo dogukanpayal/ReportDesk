@@ -24,10 +24,10 @@ const Report = sequelize.define('Report', {
     field: 'original_file_name',
   },
   notes: {
-    type: DataTypes.STRING(255), // 255 karakter limiti
+    type: DataTypes.STRING(255),
     allowNull: true,
     validate: {
-      len: [0, 255] // 0-255 karakter arası
+      len: [0, 255]
     }
   },
   status: {
@@ -38,8 +38,15 @@ const Report = sequelize.define('Report', {
   aiSummary: {
     type: DataTypes.TEXT,
     allowNull: true,
-    field: 'ai_summary' // Veritabanındaki adı
+    field: 'ai_summary' 
   },
+  // --- YENİ EKLENEN ALAN ---
+  aiSummaryShort: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    field: 'ai_summary_short'
+  },
+  // -------------------------
   date: {
     type: DataTypes.DATEONLY,
     allowNull: false,
@@ -65,23 +72,29 @@ const Report = sequelize.define('Report', {
     type: DataTypes.DATE,
     allowNull: true,
     field: 'updated_at',
-    defaultValue: null, // Varsayılan olarak null
+    defaultValue: null,
   },
 }, {
   tableName: 'reports',
-  timestamps: false, // Manuel timestamp yönetimi
-  underscored: true, // snake_case column isimleri kullan
+  timestamps: false,
+  underscored: true,
   hooks: {
-    // Yeni rapor oluşturulduğunda sadece created_at'i set et
     beforeCreate: (report, options) => {
       const currentDate = new Date();
       report.createdAt = currentDate;
       report.updatedAt = null;
     },
-    // Rapor güncellendiğinde updated_at'i güncelle (sadece gerçek düzenleme için)
     beforeUpdate: (report, options) => {
-      // Sadece status değişikliği değilse updated_at'i güncelle
-      if (options.fields && !options.fields.includes('status')) {
+      // If update is triggered only for AI-generated fields, do not mark as edited.
+      // Determine which fields are being saved in this update.
+      const fields = Array.isArray(options && options.fields) ? options.fields : [];
+
+      // Remove AI-only fields from consideration
+      const nonAIFocused = fields.filter(f => !['aiSummary', 'aiSummaryShort', 'ai_summary', 'ai_summary_short'].includes(f));
+
+      // If there are any non-AI fields being updated and status is not the only excluded field,
+      // then update the updatedAt timestamp. This keeps AI-only updates from marking the report as edited.
+      if (nonAIFocused.length > 0 && !nonAIFocused.includes('status')) {
         const currentDate = new Date();
         report.updatedAt = currentDate;
       }
@@ -89,13 +102,11 @@ const Report = sequelize.define('Report', {
   }
 });
 
-// Virtual field - 24 saat içinde düzenlenebilir mi?
 Report.prototype.isEditable = function() {
   const hoursSinceCreation = (Date.now() - new Date(this.createdAt)) / (1000 * 60 * 60);
   return hoursSinceCreation <= 24;
 };
 
-// Instance method - düzenleme süresi kaldı mı?
 Report.prototype.getTimeRemaining = function() {
   const hoursSinceCreation = (Date.now() - new Date(this.createdAt)) / (1000 * 60 * 60);
   const remainingHours = Math.max(0, 24 - hoursSinceCreation);
@@ -109,4 +120,4 @@ Report.prototype.getTimeRemaining = function() {
 Report.belongsTo(User, { foreignKey: 'userId' });
 User.hasMany(Report, { foreignKey: 'userId' });
 
-export default Report; 
+export default Report;

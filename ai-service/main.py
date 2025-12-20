@@ -4,6 +4,7 @@ import os
 import pdfplumber
 import google.generativeai as genai
 from dotenv import load_dotenv
+import json
 
 # .env dosyasını yükle (API Key güvenliği için)
 load_dotenv()
@@ -39,27 +40,51 @@ def extract_text_from_pdf(file_path: str):
         return None
 
 def summarize_with_gemini(text):
-    """Gemini API kullanarak metni özetler."""
+    """Gemini API kullanarak metni hem kısa hem detaylı özetler."""
     if not text or len(text) < 50:
-        return "İçerik özet çıkarmak için çok kısa."
+        return {"short": "İçerik çok kısa.", "detailed": "İçerik özet çıkarmak için çok kısa."}
 
     try:
-        # Gemini 1.5 Flash modeli hızlı ve ücretsiz katman için idealdir
+        # Eski çalışan modelin
         model = genai.GenerativeModel('gemini-flash-latest')       
-        prompt = f"""
-        Aşağıdaki metni kurumsal bir rapor formatında, Türkçe olarak özetle. 
-        Önemli noktaları vurgula ve gereksiz detaylardan kaçın.
         
-        Metin:
+        prompt = f"""
+        Aşağıdaki rapor metnini analiz et ve bana MUTLAKA geçerli bir JSON formatında iki farklı özet ver.
+        
+        İstenen JSON Formatı:
+        {{
+            "short": "Buraya raporun 2-3 cümlelik, yöneticinin hızlıca okuyabileceği raporun ne içerdiğini anlatan çok kısa ve vurucu bir özetini yaz.",
+            "detailed": "Buraya raporun maddeler halinde (bullet points), geniş kapsamlı, detaylı ve profesyonel analizini yaz."
+        }}
+
+        ÖNEMLİ TALİMATLAR:
+        1. "short" kısmı: Kısa, öz ve net olsun.
+        2. "detailed" kısmı: BURASI ÇOK ÖNEMLİ. Asla kısa kesme. Metni kurumsal bir rapor formatında, Türkçe olarak, maddeler halinde detaylandırarak yaz. Eskiden olduğu gibi uzun ve açıklayıcı olsun.
+        3. Sadece saf JSON döndür. Markdown etiketi (```json) kullanma.
+        
+        Rapor Metni:
         {text}
         """
         
         response = model.generate_content(prompt)
         
-        return response.text
+        # Temizlik: Gemini bazen ```json etiketi ekler, bunları temizleyelim
+        cleaned_text = response.text.replace("```json", "").replace("```", "").strip()
+        
+        try:
+            return json.loads(cleaned_text)
+        except json.JSONDecodeError:
+            print("JSON ayrıştırma hatası, düz metin dönülüyor.")
+            # Hata durumunda fallback
+            return {
+                "short": response.text[:200] + "...",
+                "detailed": response.text
+            }
+            
     except Exception as e:
         print(f"Gemini Hatası: {e}")
-        return "Yapay zeka servisine erişilemedi veya bir hata oluştu."
+        # API hatası durumunda boş dönmemesi için
+        return {"short": "AI Servisi Hatası", "detailed": f"Model hatası: {str(e)}"}
 
 @app.post("/analyze")
 async def analyze_report(request: AnalysisRequest):
@@ -73,19 +98,21 @@ async def analyze_report(request: AnalysisRequest):
     if request.file_path.lower().endswith(".pdf"):
         extracted_text = extract_text_from_pdf(full_file_path)
     
-    summary_result = ""
+    summary_result = {"short": "", "detailed": ""}
+    
     if extracted_text and len(extracted_text) > 30:
         print("Gemini'ye gönderiliyor...")
         summary_result = summarize_with_gemini(extracted_text)
         print("Özet başarıyla alındı.")
     else:
-        summary_result = "Okunabilir metin bulunamadı."
+        summary_result = {"short": "Metin yok.", "detailed": "Okunabilir metin bulunamadı."}
     
     return {
         "message": "Tamamlandı",
         "report_id": request.report_id,
         "text_preview": extracted_text[:100] if extracted_text else "",
-        "summary": summary_result
+        "short_summary": summary_result.get("short"),
+        "detailed_summary": summary_result.get("detailed")
     }
 
 if __name__ == "__main__":

@@ -163,7 +163,9 @@ export const getAllReports = async (req, res) => {
       attributes: [
         'id', 'filePath', 'notes', 'status', 'date', 'userId',
         'created_at', 'updated_at', 'uploader_first_name', 'uploader_last_name',
-        'originalFileName', 'ai_summary'
+        'originalFileName', 
+        'ai_summary',
+        ['ai_summary_short', 'ai_summary_short'] 
       ],
       include: [{
         model: User,
@@ -218,6 +220,12 @@ export const getAllReports = async (req, res) => {
         console.log('updated_at is null for report:', plainRow.id, '(this is normal for new reports)');
       }
       
+      // Ensure both camelCase and snake_case keys exist for frontend compatibility
+      plainRow.ai_summary = plainRow.ai_summary || plainRow.aiSummary || null;
+      plainRow.ai_summary_short = plainRow.ai_summary_short || plainRow.aiSummaryShort || null;
+      plainRow.aiSummary = plainRow.aiSummary || plainRow.ai_summary || null;
+      plainRow.aiSummaryShort = plainRow.aiSummaryShort || plainRow.ai_summary_short || null;
+
       return plainRow;
     });
     
@@ -288,7 +296,9 @@ export async function getMyReports(req, res) {
       attributes: [
         'id', 'filePath', 'notes', 'status', 'date', 'userId',
         'created_at', 'updated_at', 'uploader_first_name', 'uploader_last_name',
-        'originalFileName', 'ai_summary'
+        'originalFileName', 
+        'ai_summary',
+        ['ai_summary_short', 'ai_summary_short'] 
       ],
       include: [{ 
         model: User, 
@@ -343,6 +353,12 @@ export async function getMyReports(req, res) {
         console.log('updated_at is null for report:', plainRow.id, '(this is normal for new reports)');
       }
       
+      // Ensure both camelCase and snake_case keys exist for frontend compatibility
+      plainRow.ai_summary = plainRow.ai_summary || plainRow.aiSummary || null;
+      plainRow.ai_summary_short = plainRow.ai_summary_short || plainRow.aiSummaryShort || null;
+      plainRow.aiSummary = plainRow.aiSummary || plainRow.ai_summary || null;
+      plainRow.aiSummaryShort = plainRow.aiSummaryShort || plainRow.ai_summary_short || null;
+
       return plainRow;
     });
     
@@ -455,7 +471,15 @@ export async function getReportById(req, res) {
     if (req.user.role !== 'manager' && req.user.id !== report.userId) {
       return res.status(403).json({ message: 'Forbidden' });
     }
-    res.json(report);
+
+    // Return plain object and ensure both snake_case and camelCase keys exist
+    const plain = report.get({ plain: true });
+    plain.ai_summary = plain.ai_summary || plain.aiSummary || null;
+    plain.ai_summary_short = plain.ai_summary_short || plain.aiSummaryShort || null;
+    plain.aiSummary = plain.aiSummary || plain.ai_summary || null;
+    plain.aiSummaryShort = plain.aiSummaryShort || plain.ai_summary_short || null;
+
+    res.json(plain);
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch report', error: err.message });
   }

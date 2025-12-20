@@ -5,3 +5,4 @@ python-multipart
 pdfplumber
 google-generativeai
 python-dotenv
+requests
