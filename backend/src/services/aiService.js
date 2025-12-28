@@ -45,6 +45,11 @@ export const triggerAIAnalysis = async (reportData) => {
             const detailedContent = typeof aiResult.detailed_summary === 'string' ? aiResult.detailed_summary : String(aiResult.detailed_summary || '');
             const shortContent = typeof aiResult.short_summary === 'string' ? aiResult.short_summary : String(aiResult.short_summary || '');
             
+            // YENİ: Anahtar Kelimeleri Hazırla
+            let keywordsData = aiResult.keywords || [];
+            // Sequelize JSON tipi için stringify gerekebilir, özellikle raw query'de
+            const keywordsString = JSON.stringify(keywordsData);
+
             // Embedding dizisini string formatına çevir (pgvector için gerekli format: "[0.1, 0.2, ...]")
             let embeddingString = null;
             if (aiResult.embedding && Array.isArray(aiResult.embedding)) {
@@ -57,19 +62,21 @@ export const triggerAIAnalysis = async (reportData) => {
                     `UPDATE reports 
                      SET ai_summary = :detailed, 
                          ai_summary_short = :short, 
+                         ai_keywords = :keywords,
                          embedding = :embedding 
                      WHERE id = :id`,
                     {
                         replacements: {
                             detailed: detailedContent,
                             short: shortContent,
+                            keywords: keywordsString, // YENİ: Anahtar kelimeler
                             embedding: embeddingString, // Eğer null ise null kaydedilir
                             id: reportData.id
                         }
                     }
                 );
                 
-                console.log(`[AI-Service] BAŞARILI: Rapor ID ${reportData.id} için özet ve embedding kaydedildi.`);
+                console.log(`[AI-Service] BAŞARILI: Rapor ID ${reportData.id} için özet, embedding ve anahtar kelimeler kaydedildi.`);
                 
             } catch (dbError) {
                 console.error(`[AI-Service] DB Hatası:`, dbError);

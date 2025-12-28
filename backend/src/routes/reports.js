@@ -192,7 +192,7 @@ router.get('/my', authenticateJWT, getMyReports);
  * required: true
  * schema:
  * type: string
- * description: Aranacak metin (Örn: "Şirketin finansal durumu")
+ * description: 'Aranacak metin (Örn: "Şirketin finansal durumu")'
  * responses:
  * 200:
  * description: Başarılı

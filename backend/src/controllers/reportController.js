@@ -79,8 +79,6 @@ export async function uploadReport(req, res) {
         });
 
         // 2. --- AI ANALİZİNİ TETİKLE ---
-        // await kullanmıyoruz, böylece kullanıcı bekletilmeden yanıt alıyor.
-        // İşlem arka planda devam ediyor.
         triggerAIAnalysis({
             id: report.id,
             filePath: report.filePath,
@@ -107,10 +105,10 @@ export const getAllReports = async (req, res) => {
     // Tarih filtresi - tam gün aralığı
     if (date && date.trim() !== '') {
       const startDate = new Date(date);
-      startDate.setHours(0, 0, 0, 0); // Günün başlangıcı
+      startDate.setHours(0, 0, 0, 0); 
       
       const endDate = new Date(date);
-      endDate.setHours(23, 59, 59, 999); // Günün sonu
+      endDate.setHours(23, 59, 59, 999); 
       
       where.created_at = { 
         [Op.between]: [startDate, endDate] 
@@ -122,24 +120,22 @@ export const getAllReports = async (req, res) => {
       where.status = status;
     }
     
-    // Kullanıcı ID filtresi - userId varsa her zaman uygula
+    // Kullanıcı ID filtresi
     if (userId && userId.trim() !== '') {
       where.userId = userId;
     }
     
-    // Debug log - sadece development ortamında
     if (process.env.NODE_ENV === 'development') {
       console.log('getAllReports - User role:', req.user?.role, 'Filter:', userId);
     }
 
-    // Arama filtresi (çalışan adı, notlar veya email) - SQL injection korumalı
+    // Arama filtresi
     if (search && search.trim() !== '') {
       const searchTerm = search.trim();
       where[Op.or] = [
         { notes: { [Op.iLike]: `%${searchTerm}%` } },
         { uploader_first_name: { [Op.iLike]: `%${searchTerm}%` } },
         { uploader_last_name: { [Op.iLike]: `%${searchTerm}%` } },
-        // Güvenli CONCAT kullanımı - parameterized query
         sequelize.literal(`CONCAT(uploader_first_name, ' ', uploader_last_name) ILIKE :search`),
         { '$User.email$': { [Op.iLike]: `%${searchTerm}%` } }
       ];
@@ -166,66 +162,61 @@ export const getAllReports = async (req, res) => {
         'created_at', 'updated_at', 'uploader_first_name', 'uploader_last_name',
         'originalFileName', 
         'ai_summary',
-        ['ai_summary_short', 'ai_summary_short'] 
+        ['ai_summary_short', 'ai_summary_short'],
+        'ai_keywords' // <--- DÜZELTME 1: Bu satır eklendi. Artık keywords verisi çekiliyor.
       ],
       include: [{
         model: User,
         attributes: ['id', 'firstName', 'lastName', 'email'],
-        required: false // LEFT JOIN for better performance
+        required: false 
       }],
       order,
       limit,
       offset,
       replacements: search ? { search: `%${search}%` } : {},
-      distinct: true // Avoid duplicate rows in count
+      distinct: true 
     });
     
     const plainRows = data.rows.map(row => {
       const plainRow = row.get({ plain: true });
       
-      // User join'den doğru uploader bilgilerini al
       if (plainRow.User) {
         plainRow.uploader_first_name = plainRow.User.firstName;
         plainRow.uploader_last_name = plainRow.User.lastName;
-        plainRow.email = plainRow.User.email; // Email bilgisini ekle
+        plainRow.email = plainRow.User.email; 
       }
       
-      // Tarih alanlarını güvenli hale getir
       if (plainRow.created_at) {
         try {
           const date = new Date(plainRow.created_at);
           if (isNaN(date.getTime())) {
-            console.warn('Invalid created_at date in report:', plainRow.id, plainRow.created_at);
             plainRow.created_at = null;
           }
         } catch (error) {
-          console.warn('Error processing created_at date in report:', plainRow.id, plainRow.created_at, error);
           plainRow.created_at = null;
         }
-      } else {
-        console.warn('created_at is missing for report:', plainRow.id);
       }
       
       if (plainRow.updated_at) {
         try {
           const date = new Date(plainRow.updated_at);
           if (isNaN(date.getTime())) {
-            console.warn('Invalid updated_at date in report:', plainRow.id, plainRow.updated_at);
             plainRow.updated_at = null;
           }
         } catch (error) {
-          console.warn('Error processing updated_at date in report:', plainRow.id, plainRow.updated_at, error);
           plainRow.updated_at = null;
         }
-      } else {
-        console.log('updated_at is null for report:', plainRow.id, '(this is normal for new reports)');
       }
       
-      // Ensure both camelCase and snake_case keys exist for frontend compatibility
+      // Frontend uyumluluğu için mapping
       plainRow.ai_summary = plainRow.ai_summary || plainRow.aiSummary || null;
       plainRow.ai_summary_short = plainRow.ai_summary_short || plainRow.aiSummaryShort || null;
       plainRow.aiSummary = plainRow.aiSummary || plainRow.ai_summary || null;
       plainRow.aiSummaryShort = plainRow.aiSummaryShort || plainRow.ai_summary_short || null;
+      
+      // <--- DÜZELTME 2: Keywords mapping eklendi
+      plainRow.ai_keywords = plainRow.ai_keywords || plainRow.aiKeywords || [];
+      plainRow.aiKeywords = plainRow.aiKeywords || plainRow.ai_keywords || [];
 
       return plainRow;
     });
@@ -245,39 +236,30 @@ export const getAllReports = async (req, res) => {
 export async function getMyReports(req, res) {
   try {
     const { page = 1, size = 10, sortBy, sortOrder, date, status, search } = req.query;
-    const where = { userId: req.user.id }; // Filter by logged-in user
+    const where = { userId: req.user.id }; 
     
-    // Tarih filtresi - tam gün aralığı
     if (date && date.trim() !== '') {
       const startDate = new Date(date);
-      startDate.setHours(0, 0, 0, 0); // Günün başlangıcı
+      startDate.setHours(0, 0, 0, 0); 
       
       const endDate = new Date(date);
-      endDate.setHours(23, 59, 59, 999); // Günün sonu
+      endDate.setHours(23, 59, 59, 999); 
       
       where.created_at = { 
         [Op.between]: [startDate, endDate] 
       };
-      
-      // Debug log - sadece development ortamında
-      if (process.env.NODE_ENV === 'development') {
-        console.log('getMyReports - Date filter:', { input: date, start: startDate, end: endDate });
-      }
     }
     
-    // Durum filtresi
     if (status && status.trim() !== '') {
       where.status = status;
     }
 
-    // Arama filtresi (notlar, çalışan adı veya email) - SQL injection korumalı
     if (search && search.trim() !== '') {
       const searchTerm = search.trim();
       where[Op.or] = [
         { notes: { [Op.iLike]: `%${searchTerm}%` } },
         { uploader_first_name: { [Op.iLike]: `%${searchTerm}%` } },
         { uploader_last_name: { [Op.iLike]: `%${searchTerm}%` } },
-        // Güvenli CONCAT kullanımı - parameterized query
         sequelize.literal(`CONCAT(uploader_first_name, ' ', uploader_last_name) ILIKE :search`),
         { '$User.email$': { [Op.iLike]: `%${searchTerm}%` } }
       ];
@@ -289,7 +271,6 @@ export async function getMyReports(req, res) {
     const sortField = sortBy || 'created_at';
     const sortDirection = sortOrder || 'desc';
 
-    // No need to sort by employee here since it's always the same user
     order.push([sortField, sortDirection]);
     
     const data = await Report.findAndCountAll({
@@ -299,66 +280,60 @@ export async function getMyReports(req, res) {
         'created_at', 'updated_at', 'uploader_first_name', 'uploader_last_name',
         'originalFileName', 
         'ai_summary',
-        ['ai_summary_short', 'ai_summary_short'] 
+        ['ai_summary_short', 'ai_summary_short'],
+        'ai_keywords' // <--- DÜZELTME 3: getMyReports için de eklendi
       ],
       include: [{ 
         model: User, 
         attributes: ['id', 'firstName', 'lastName', 'email'],
-        required: false // LEFT JOIN for better performance
+        required: false
       }],
       order,
       limit,
       offset,
       replacements: search ? { search: `%${search}%` } : {},
-      distinct: true // Avoid duplicate rows in count
+      distinct: true 
     });
 
     const plainRows = data.rows.map(row => {
       const plainRow = row.get({ plain: true });
       
-      // User join'den doğru uploader bilgilerini al
       if (plainRow.User) {
         plainRow.uploader_first_name = plainRow.User.firstName;
         plainRow.uploader_last_name = plainRow.User.lastName;
-        plainRow.email = plainRow.User.email; // Email bilgisini ekle
+        plainRow.email = plainRow.User.email;
       }
       
-      // Tarih alanlarını güvenli hale getir
       if (plainRow.created_at) {
         try {
           const date = new Date(plainRow.created_at);
           if (isNaN(date.getTime())) {
-            console.warn('Invalid created_at date in report:', plainRow.id, plainRow.created_at);
             plainRow.created_at = null;
           }
         } catch (error) {
-          console.warn('Error processing created_at date in report:', plainRow.id, plainRow.created_at, error);
           plainRow.created_at = null;
         }
-      } else {
-        console.warn('created_at is missing for report:', plainRow.id);
       }
       
       if (plainRow.updated_at) {
         try {
           const date = new Date(plainRow.updated_at);
           if (isNaN(date.getTime())) {
-            console.warn('Invalid updated_at date in report:', plainRow.id, plainRow.updated_at);
             plainRow.updated_at = null;
           }
         } catch (error) {
-          console.warn('Error processing updated_at date in report:', plainRow.id, plainRow.updated_at, error);
           plainRow.updated_at = null;
         }
-      } else {
-        console.log('updated_at is null for report:', plainRow.id, '(this is normal for new reports)');
       }
       
-      // Ensure both camelCase and snake_case keys exist for frontend compatibility
       plainRow.ai_summary = plainRow.ai_summary || plainRow.aiSummary || null;
       plainRow.ai_summary_short = plainRow.ai_summary_short || plainRow.aiSummaryShort || null;
       plainRow.aiSummary = plainRow.aiSummary || plainRow.ai_summary || null;
       plainRow.aiSummaryShort = plainRow.aiSummaryShort || plainRow.ai_summary_short || null;
+      
+      // <--- DÜZELTME 4: Mapping eklendi
+      plainRow.ai_keywords = plainRow.ai_keywords || plainRow.aiKeywords || [];
+      plainRow.aiKeywords = plainRow.aiKeywords || plainRow.ai_keywords || [];
 
       return plainRow;
     });
@@ -380,7 +355,6 @@ export const updateReportStatus = async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
-    // Input validation
     if (!id || isNaN(parseInt(id))) {
       return res.status(400).json({ message: 'Geçerli bir rapor ID\'si gerekli' });
     }
@@ -401,7 +375,6 @@ export const updateReportStatus = async (req, res) => {
       return res.status(404).json({ message: 'Rapor bulunamadı' });
     }
 
-    // Sadece status alanını güncelle, updated_at'i değiştirme
     await report.update({ status }, { fields: ['status'] });
 
     res.json(report.get({ plain: true }));
@@ -414,12 +387,10 @@ export const updateReportStatus = async (req, res) => {
   }
 };
 
-// Bulk status update fonksiyonu
 export const updateBulkReportStatus = async (req, res) => {
   try {
     const { reportIds, status } = req.body;
 
-    // Validation
     if (!reportIds || !Array.isArray(reportIds) || reportIds.length === 0) {
       return res.status(400).json({ message: 'Report IDs array is required.' });
     }
@@ -428,26 +399,17 @@ export const updateBulkReportStatus = async (req, res) => {
       return res.status(400).json({ message: 'Invalid status provided.' });
     }
 
-    // Debug log - sadece development ortamında
     if (process.env.NODE_ENV === 'development') {
       console.log('Bulk status update:', { reportIds: reportIds.length, status });
     }
 
-    // Bulk update - sadece status alanını güncelle
     const result = await Report.update(
       { status: status },
       { 
-        where: { 
-          id: reportIds 
-        },
-        fields: ['status'] // Sadece status alanını güncelle
+        where: { id: reportIds },
+        fields: ['status'] 
       }
     );
-
-    // Debug log - sadece development ortamında
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Bulk update completed:', { updatedCount: result[0] });
-    }
 
     res.json({ 
       message: `${result[0]} rapor durumu güncellendi`,
@@ -468,17 +430,19 @@ export async function getReportById(req, res) {
     });
     if (!report) return res.status(404).json({ message: 'Report not found' });
 
-    // Only owner or manager can view
     if (req.user.role !== 'manager' && req.user.id !== report.userId) {
       return res.status(403).json({ message: 'Forbidden' });
     }
 
-    // Return plain object and ensure both snake_case and camelCase keys exist
     const plain = report.get({ plain: true });
     plain.ai_summary = plain.ai_summary || plain.aiSummary || null;
     plain.ai_summary_short = plain.ai_summary_short || plain.aiSummaryShort || null;
     plain.aiSummary = plain.aiSummary || plain.ai_summary || null;
     plain.aiSummaryShort = plain.aiSummaryShort || plain.ai_summary_short || null;
+    
+    // <--- DÜZELTME 5: Tekil rapor çekme için de mapping eklendi
+    plain.ai_keywords = plain.ai_keywords || plain.aiKeywords || [];
+    plain.aiKeywords = plain.aiKeywords || plain.ai_keywords || [];
 
     res.json(plain);
   } catch (err) {
@@ -494,16 +458,15 @@ export async function downloadReportFile(req, res) {
       return res.status(400).json({ message: 'Filename is required' });
     }
 
-    // Güvenlik: Path traversal ve tehlikeli karakterler kontrolü
     const dangerousPatterns = [
-      /\.\./,           // Path traversal
-      /[\/\\]/,         // Directory separators
-      /[<>:"|?*]/,      // Windows forbidden characters
-      /[\x00-\x1f]/,    // Control characters
-      /^\./,            // Hidden files
-      /\.$/,            // Files ending with dot
-      /^$/,             // Empty filename
-      /^CON$|^PRN$|^AUX$|^NUL$|^COM[1-9]$|^LPT[1-9]$/i // Windows reserved names
+      /\.\./,           
+      /[\/\\]/,         
+      /[<>:"|?*]/,      
+      /[\x00-\x1f]/,    
+      /^\./,            
+      /\.$/,            
+      /^$/,             
+      /^CON$|^PRN$|^AUX$|^NUL$|^COM[1-9]$|^LPT[1-9]$/i 
     ];
     
     if (dangerousPatterns.some(pattern => pattern.test(filename))) {
@@ -511,7 +474,6 @@ export async function downloadReportFile(req, res) {
       return res.status(400).json({ message: 'Invalid filename' });
     }
     
-    // Dosya adı uzunluğu kontrolü
     if (filename.length > 255) {
       return res.status(400).json({ message: 'Filename too long' });
     }
@@ -519,33 +481,28 @@ export async function downloadReportFile(req, res) {
     const directoryPath = path.resolve('uploads');
     const filePath = path.join(directoryPath, filename);
 
-    // Dosya var mı kontrol et
     if (!fs.existsSync(filePath)) {
       console.error('File not found:', filePath);
       return res.status(404).json({ message: 'File not found' });
     }
 
-    // Dosya istatistiklerini al
     const stats = fs.statSync(filePath);
     if (!stats.isFile()) {
       return res.status(400).json({ message: 'Not a file' });
     }
 
-    // Rapor bilgilerini bul (filename ile)
     const report = await Report.findOne({
       where: { filePath: filename }
     });
 
-    let downloadFilename = filename; // Varsayılan olarak orijinal dosya adı
+    let downloadFilename = filename; 
 
     if (report) {
-      // Orijinal dosya adını kullan
       if (report.originalFileName) {
         downloadFilename = report.originalFileName;
       }
     }
 
-    // Debug log - sadece development ortamında (sensitive data olmadan)
     if (process.env.NODE_ENV === 'development') {
       console.log('File download:', { 
         originalFilename: filename, 
@@ -554,7 +511,6 @@ export async function downloadReportFile(req, res) {
       });
     }
 
-    // Dosyayı yeni isimle indir
     res.download(filePath, downloadFilename, (err) => {
       if (err) {
         console.error('File download error:', err);
@@ -562,7 +518,6 @@ export async function downloadReportFile(req, res) {
           res.status(500).json({ message: 'Download failed' });
         }
       } else {
-        // Debug log - sadece development ortamında
         if (process.env.NODE_ENV === 'development') {
           console.log('File downloaded successfully:', { original: filename, downloaded: downloadFilename });
         }
@@ -580,7 +535,6 @@ export async function updateReport(req, res) {
   const { id } = req.params;
   const { notes } = req.body;
   
-  // Notlar validasyonu
   if (notes !== undefined && notes.length > 255) {
     return res.status(400).json({ 
       message: 'Notlar 255 karakterden uzun olamaz',
@@ -598,7 +552,6 @@ export async function updateReport(req, res) {
       return res.status(403).json({ message: 'Forbidden: You can only edit your own reports' });
     }
 
-    // 24 saat kontrolü
     if (!report.isEditable()) {
       return res.status(400).json({ 
         message: 'Report cannot be edited after 24 hours',
@@ -606,9 +559,7 @@ export async function updateReport(req, res) {
       });
     }
 
-    // Dosya güncelleme kontrolü
     if (req.file) {
-      // Dosya validasyonu
       const allowedFileTypes = [
         'application/pdf',
         'application/msword',
@@ -620,9 +571,7 @@ export async function updateReport(req, res) {
       
       const allowedExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt'];
       
-      // MIME type kontrolü
       if (!allowedFileTypes.includes(req.file.mimetype)) {
-        // Dosya uzantısı kontrolü (fallback)
         const fileExtension = req.file.originalname.toLowerCase().substring(req.file.originalname.lastIndexOf('.'));
         if (!allowedExtensions.includes(fileExtension)) {
           return res.status(400).json({ 
@@ -632,7 +581,6 @@ export async function updateReport(req, res) {
         }
       }
 
-      // Dosya adı uzunluğu kontrolü (255 karakter)
       if (req.file.originalname.length > 255) {
         return res.status(400).json({ 
           message: 'Dosya adı çok uzun. Maksimum 255 karakter olmalıdır.',
@@ -640,7 +588,6 @@ export async function updateReport(req, res) {
         });
       }
 
-      // Dosya adı karakter kontrolü (sadece alfanumerik, tire ve alt çizgi)
       const validFilenameRegex = /^[a-zA-Z0-9\-\_\.]+$/;
       if (!validFilenameRegex.test(req.file.originalname)) {
         return res.status(400).json({ 
@@ -649,31 +596,24 @@ export async function updateReport(req, res) {
         });
       }
 
-      // Eski dosyayı storage'dan sil
       try {
-        if (report.filePath && supabase) {
-          // Supabase Storage'dan dosyayı sil
-          const { error } = await supabase.storage
+        if (report.filePath && global.supabase) {
+          const { error } = await global.supabase.storage
             .from('reports')
             .remove([report.filePath]);
           
           if (error) {
             console.error('Error deleting old file from storage:', error);
           }
-        } else {
-          // Supabase yapılandırılmamışsa, sadece log
-          console.log('Supabase not configured, skipping file deletion from storage');
         }
       } catch (storageError) {
         console.error('Storage error:', storageError);
-        // Storage hatası olsa bile devam et
       }
       
       report.filePath = req.file.filename;
-      report.originalFileName = req.file.originalname; // Orijinal dosya adını da güncelle
+      report.originalFileName = req.file.originalname; 
     }
 
-    // Notları güncelle
     if (notes !== undefined) {
       report.notes = notes;
     }
@@ -691,11 +631,9 @@ export async function updateReport(req, res) {
   }
 }
 
-// Rapor düzenleme durumunu kontrol et (24 saat)
 export async function getReportEditStatus(req, res) {
   const { id } = req.params;
   try {
-    // Debug log - sadece development ortamında (sensitive data olmadan)
     if (process.env.NODE_ENV === 'development') {
       console.log('getReportEditStatus:', { userId: req.user.id, role: req.user.role, reportId: id });
     }
@@ -705,28 +643,13 @@ export async function getReportEditStatus(req, res) {
       return res.status(404).json({ message: 'Report not found' });
     }
 
-    // Debug log - sadece development ortamında
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Report data:', { id: report.id, userId: report.userId, status: report.status });
-    }
-
-    // Yetki kontrolü - sadece rapor sahibi
     if (report.userId !== req.user.id) {
-      // Debug log - sadece development ortamında
-      if (process.env.NODE_ENV === 'development') {
-        console.log('Permission denied: User cannot access this report');
-      }
       return res.status(403).json({ 
         message: 'Forbidden: You can only check your own reports'
       });
     }
 
     const timeInfo = report.getTimeRemaining();
-    
-    // Debug log - sadece development ortamında
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Time info:', timeInfo);
-    }
     
     res.json({
       canEdit: timeInfo.canEdit,
@@ -752,12 +675,6 @@ export async function deleteReport(req, res) {
       return res.status(403).json({ message: 'Forbidden: You can only delete your own reports' });
     }
     
-    // Optional: Delete the file from the server
-    // const filePath = path.resolve('uploads', report.filePath);
-    // fs.unlink(filePath, (err) => {
-    //   if (err) console.error("Failed to delete file:", err);
-    // });
-
     await report.destroy();
     res.status(204).send();
   } catch (err) {
@@ -766,14 +683,10 @@ export async function deleteReport(req, res) {
   }
 }
 
-
-
-// Toplu silme fonksiyonu
 export async function deleteBulkReports(req, res) {
   try {
     const { reportIds } = req.body;
     
-    // Debug log - sadece development ortamında
     if (process.env.NODE_ENV === 'development') {
       console.log('Bulk delete request:', { reportCount: reportIds.length });
     }
@@ -782,12 +695,10 @@ export async function deleteBulkReports(req, res) {
       return res.status(400).json({ message: 'Report IDs array is required' });
     }
 
-    // Kullanıcının yetkisini kontrol et
     const reports = await Report.findAll({
       where: { id: reportIds }
     });
 
-    // Sadece yöneticiler tüm raporları silebilir, çalışanlar sadece kendi raporlarını
     const canDeleteAll = req.user.role === 'Yonetici';
     const unauthorizedReports = reports.filter(report => 
       !canDeleteAll && report.userId !== req.user.id
@@ -799,7 +710,6 @@ export async function deleteBulkReports(req, res) {
       });
     }
 
-    // Toplu silme işlemi
     const result = await Report.destroy({
       where: { 
         id: reportIds,
@@ -825,7 +735,6 @@ export async function semanticSearch(req, res) {
         console.log(`[Semantic-Search] Arama: "${query}"`);
         const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
         
-        // 1. Python servisinden vektör al
         let queryVector;
         try {
             const aiResponse = await axios.post(`${aiServiceUrl}/embed-query`, { text: query });
@@ -837,8 +746,6 @@ export async function semanticSearch(req, res) {
 
         if (!queryVector) return res.status(500).json({ message: 'Vektör oluşturulamadı.' });
 
-        // 2. Raw SQL Sorgusu (Frontend'in beklediği snake_case isimlerle)
-        // User email'ini de join ile alıyoruz.
         const vectorString = JSON.stringify(queryVector);
 
         const results = await sequelize.query(
@@ -848,7 +755,8 @@ export async function semanticSearch(req, res) {
                 r.original_file_name,
                 r.ai_summary,
                 r.ai_summary_short,
-                r.created_at,        /* Frontend bunu bekliyor */
+                r.ai_keywords, /* <--- DÜZELTME 6: SQL sorgusuna da eklendi */
+                r.created_at,        
                 r.updated_at,
                 r.date,
                 r.status,
@@ -856,12 +764,12 @@ export async function semanticSearch(req, res) {
                 r.uploader_first_name,
                 r.uploader_last_name,
                 r.user_id as "userId",
-                u.email as "user_email", /* Email bilgisini al */
+                u.email as "user_email",
                 1 - (r.embedding <=> :vectorString) as similarity
              FROM reports r
              LEFT JOIN users u ON r.user_id = u.id
              WHERE r.embedding IS NOT NULL 
-               AND (1 - (r.embedding <=> :vectorString)) > 0.40  /* Benzerlik Eşiği */
+               AND (1 - (r.embedding <=> :vectorString)) > 0.40  
              ORDER BY similarity DESC
              LIMIT 5`,
             {
@@ -872,11 +780,8 @@ export async function semanticSearch(req, res) {
 
         console.log(`[Semantic-Search] ${results.length} sonuç bulundu.`);
 
-        // 3. Frontend Uyumluluk Modu (Mapping)
-        // ReportsTable.js, "report.User.email" şeklinde nested veri bekliyor.
         const finalResults = results.map(row => ({
             ...row,
-            // Tablo User.email beklediği için yapay bir User objesi oluşturuyoruz
             User: {
                 email: row.user_email || 'Email Yok'
             }

@@ -46,7 +46,12 @@ const Report = sequelize.define('Report', {
     allowNull: true,
     field: 'ai_summary_short'
   },
-  // -------------------------
+  aiKeywords: {
+    type: DataTypes.JSON, 
+    allowNull: true,
+    defaultValue: [],
+    field: 'ai_keywords'
+  },
   date: {
     type: DataTypes.DATEONLY,
     allowNull: false,

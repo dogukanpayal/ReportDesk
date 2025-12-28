@@ -22,6 +22,7 @@ import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import LocalOfferIcon from '@mui/icons-material/LocalOffer'; // YENİ İKON
 
 const API_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000';
 
@@ -36,6 +37,20 @@ export default function ReportDetailModal({ report, onClose, open = true }) {
   // Backend'den gelen veri formatına göre (snake_case veya camelCase) kontrol ediyoruz
   const shortSummary = report.ai_summary_short || report.aiSummaryShort || (report.ai_summary ? report.ai_summary.substring(0, 150) + "..." : "Özet hazırlanıyor...");
   const detailedSummary = report.ai_summary || report.aiSummary;
+  
+  // YENİ: Anahtar Kelime Mantığı
+  const keywords = report.ai_keywords || report.aiKeywords;
+  let parsedKeywords = [];
+  try {
+      if (Array.isArray(keywords)) {
+          parsedKeywords = keywords;
+      } else if (typeof keywords === 'string') {
+          parsedKeywords = JSON.parse(keywords);
+      }
+  } catch (e) {
+      console.warn("Keywords parse hatası", e);
+      parsedKeywords = [];
+  }
 
   const handleDownload = async () => {
     try {
@@ -153,18 +168,42 @@ export default function ReportDetailModal({ report, onClose, open = true }) {
                       </Typography>
                   </Box>
                   
-                  {/* Özet İçeriği - pre-wrap ile satır başları korunur */}
+                  {/* Özet İçeriği */}
                   <Typography 
                       variant="body2" 
                       sx={{ 
                           color: '#0D47A1', 
                           lineHeight: 1.6,
-                          whiteSpace: 'pre-wrap', // <--- KRİTİK NOKTA: Metin formatını korur
+                          whiteSpace: 'pre-wrap', 
                           fontFamily: 'Roboto, sans-serif'
                       }}
                   >
                       {showDetailed ? detailedSummary : shortSummary}
                   </Typography>
+
+                  {/* --- YENİ: ANAHTAR KELİMELER (KEYWORDS) --- */}
+                  {parsedKeywords && parsedKeywords.length > 0 && (
+                      <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', mr: 0.5 }}>
+                              <LocalOfferIcon sx={{ fontSize: 18, color: '#1565C0', opacity: 0.8 }} />
+                          </Box>
+                          {parsedKeywords.map((keyword, index) => (
+                              <Chip 
+                                  key={index}
+                                  label={keyword}
+                                  size="small"
+                                  sx={{ 
+                                      bgcolor: 'rgba(255, 255, 255, 0.6)', 
+                                      color: '#1565C0',
+                                      fontWeight: 500,
+                                      border: '1px solid rgba(25, 118, 210, 0.3)',
+                                      '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.9)' }
+                                  }}
+                              />
+                          ))}
+                      </Box>
+                  )}
+                  {/* ------------------------------------------- */}
 
                   {/* Devamını Oku Butonu */}
                   <Button 

@@ -44,26 +44,32 @@ def extract_text_from_pdf(file_path: str):
         return None
 
 def summarize_with_gemini(text):
-    """Gemini API kullanarak metni hem kısa hem detaylı özetler."""
+    """Gemini API kullanarak metni özetler ve anahtar kelime çıkarır."""
     if not text or len(text) < 50:
-        return {"short": "İçerik çok kısa.", "detailed": "İçerik özet çıkarmak için çok kısa."}
+        return {
+            "short": "İçerik çok kısa.", 
+            "detailed": "İçerik özet çıkarmak için çok kısa.",
+            "keywords": []
+        }
 
     try:
         model = genai.GenerativeModel('gemini-flash-latest')       
         
         prompt = f"""
-        Aşağıdaki rapor metnini analiz et ve bana MUTLAKA geçerli bir JSON formatında iki farklı özet ver.
+        Aşağıdaki rapor metnini analiz et ve bana MUTLAKA geçerli bir JSON formatında yanıt ver.
         
         İstenen JSON Formatı:
         {{
             "short": "Buraya raporun 2-3 cümlelik, yöneticinin hızlıca okuyabileceği raporun ne içerdiğini anlatan çok kısa ve vurucu bir özetini yaz.",
-            "detailed": "Buraya raporun maddeler halinde (bullet points), geniş kapsamlı, detaylı ve profesyonel analizini yaz."
+            "detailed": "Buraya raporun maddeler halinde (bullet points), geniş kapsamlı, detaylı ve profesyonel analizini yaz.",
+            "keywords": ["AnahtarKelime1", "AnahtarKelime2", "AnahtarKelime3", "AnahtarKelime4", "AnahtarKelime5"]
         }}
 
         ÖNEMLİ TALİMATLAR:
         1. "short" kısmı: Kısa, öz ve net olsun.
-        2. "detailed" kısmı: BURASI ÇOK ÖNEMLİ. Asla kısa kesme. Metni kurumsal bir rapor formatında, Türkçe olarak, maddeler halinde detaylandırarak yaz. Eskiden olduğu gibi uzun ve açıklayıcı olsun.
-        3. Sadece saf JSON döndür. Markdown etiketi (```json) kullanma.
+        2. "detailed" kısmı: BURASI ÇOK ÖNEMLİ. Asla kısa kesme. Metni kurumsal bir rapor formatında, Türkçe olarak, maddeler halinde detaylandırarak yaz.
+        3. "keywords" kısmı: Metnin içeriğini en iyi yansıtan, aranabilirliği yüksek 5 ila 7 adet teknik terim veya konuyu içeren bir String Listesi (Array) olsun.
+        4. Sadece saf JSON döndür. Markdown etiketi (```json) kullanma.
         
         Rapor Metni:
         {text}
@@ -76,14 +82,16 @@ def summarize_with_gemini(text):
             return json.loads(cleaned_text)
         except json.JSONDecodeError:
             print("JSON ayrıştırma hatası, düz metin dönülüyor.")
+            # Hata durumunda kurtarma senaryosu
             return {
                 "short": response.text[:200] + "...",
-                "detailed": response.text
+                "detailed": response.text,
+                "keywords": []
             }
             
     except Exception as e:
         print(f"Gemini Hatası: {e}")
-        return {"short": "AI Servisi Hatası", "detailed": f"Model hatası: {str(e)}"}
+        return {"short": "AI Servisi Hatası", "detailed": f"Model hatası: {str(e)}", "keywords": []}
 
 # YENİ: Embedding oluşturma fonksiyonu
 def generate_embedding(text):
@@ -113,19 +121,19 @@ async def analyze_report(request: AnalysisRequest):
     if request.file_path.lower().endswith(".pdf"):
         extracted_text = extract_text_from_pdf(full_file_path)
     
-    summary_result = {"short": "", "detailed": ""}
-    embedding_vector = [] # YENİ
+    summary_result = {"short": "", "detailed": "", "keywords": []}
+    embedding_vector = [] 
 
     if extracted_text and len(extracted_text) > 30:
-        print("Gemini ile özetleniyor...")
+        print("Gemini ile özetleniyor ve etiketleniyor...")
         summary_result = summarize_with_gemini(extracted_text)
         
-        # YENİ: Embedding oluştur
+        # Embedding oluştur
         print("Embedding oluşturuluyor...")
         embedding_vector = generate_embedding(extracted_text)
         print("Analiz tamamlandı.")
     else:
-        summary_result = {"short": "Metin yok.", "detailed": "Okunabilir metin bulunamadı."}
+        summary_result = {"short": "Metin yok.", "detailed": "Okunabilir metin bulunamadı.", "keywords": []}
     
     return {
         "message": "Tamamlandı",
@@ -133,7 +141,8 @@ async def analyze_report(request: AnalysisRequest):
         "text_preview": extracted_text[:100] if extracted_text else "",
         "short_summary": summary_result.get("short"),
         "detailed_summary": summary_result.get("detailed"),
-        "embedding": embedding_vector # YENİ: Vektörü backend'e gönderiyoruz
+        "keywords": summary_result.get("keywords", []), # YENİ: Anahtar kelimeler eklendi
+        "embedding": embedding_vector 
     }
 
 # YENİ: Arama sorgusu için endpoint
