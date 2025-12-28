@@ -1,16 +1,29 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Container, Grid, Typography, Box, useTheme, useMediaQuery, TextField, InputAdornment, IconButton, Fade, Tooltip } from '@mui/material';
+import { Container, Grid, Typography, Box, useTheme, useMediaQuery, TextField, InputAdornment, IconButton, Fade, Tooltip, Button } from '@mui/material'; // Button eklendi
 import DescriptionIcon from '@mui/icons-material/Description';
 import SearchIcon from '@mui/icons-material/Search';
 import ClearIcon from '@mui/icons-material/Clear';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import DeleteIcon from '@mui/icons-material/Delete';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'; // <-- YENİ EKLENEN İKON
+
+// --- TEK BİR IMPORT BLOĞU OLMALI ---
+import { 
+  getAllReports, 
+  getMyReports, 
+  updateReportStatus, 
+  deleteReport, 
+  updateBulkReportStatus, 
+  deleteBulkReports,
+  semanticSearchReports // <-- YENİ EKLENEN FONKSİYON
+} from '../services/reportService';
+// -----------------------------------
+
 import ReportsTable from '../components/ReportsTable';
 import Pagination from '../components/Pagination';
 import UploadReportCard from '../components/UploadReportCard';
 import ReportsFilter from '../components/ReportsFilter';
-import { getAllReports, getMyReports, updateReportStatus, deleteReport, updateBulkReportStatus, deleteBulkReports } from '../services/reportService';
 import { useAuth } from '../contexts/AuthContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -65,6 +78,8 @@ export default function ReportPage() {
     return saved || '';
   });
   const [selectedReports, setSelectedReports] = useState(new Set());
+  const [aiInputValue, setAiInputValue] = useState(''); 
+  const [aiSearchQuery, setAiSearchQuery] = useState('');
 
   // React Query ile data fetching - Dashboard benzeri otomatik yenileme
   const {
@@ -73,9 +88,24 @@ export default function ReportPage() {
     error,
     refetch
   } = useQuery({
-    queryKey: ['reports', page, rowsPerPage, sortField, sortDirection, search, dateFilter, statusFilter, uploaderFilter, user?.role],
+    queryKey: ['reports', page, rowsPerPage, sortField, sortDirection, search, dateFilter, statusFilter, uploaderFilter, user?.role, aiSearchQuery],
     queryFn: async () => {
       if (!user) return null;
+
+      if (aiSearchQuery && aiSearchQuery.length > 2) {
+        console.log('🤖 AI Araması yapılıyor:', aiSearchQuery);
+        try {
+            const results = await semanticSearchReports(aiSearchQuery);
+            // Sonuç boşsa bile boş array döner, tablo "Kayıt bulunamadı" gösterir.
+            return {
+               reports: results || [],
+               totalItems: results ? results.length : 0
+            };
+        } catch (err) {
+            console.error("AI Arama Hatası:", err);
+            return { reports: [], totalItems: 0 };
+        }
+      }
       
       const params = {
         page: page + 1, // Backend 1-bazlı sayfa numarası bekliyor
@@ -323,6 +353,67 @@ export default function ReportPage() {
                 alignItems: { xs: 'stretch', md: 'center' }
               }}>
                 {/* Arama */}
+                <Box sx={{ mb: 3, width: '100%' }}>
+                  <TextField
+                    fullWidth
+                    placeholder="Yapay Zeka ile içerik ara... (Örn: 'Şirketin finansal riskleri neler?')"
+                    value={aiInputValue}
+                    onChange={(e) => setAiInputValue(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        setAiSearchQuery(aiInputValue);
+                        setPage(0);
+                      }
+                    }}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <AutoAwesomeIcon sx={{ color: 'secondary.main' }} /> {/* Mor renkli yıldız ikonu */}
+                        </InputAdornment>
+                      ),
+                      endAdornment: (
+                        <InputAdornment position="end">
+                           {aiInputValue && (
+                            <IconButton onClick={() => {
+                              setAiInputValue('');
+                              setAiSearchQuery('');
+                            }}>
+                              <ClearIcon />
+                            </IconButton>
+                          )}
+                          <Button 
+                            variant="contained" 
+                            color="secondary"
+                            size="small"
+                            onClick={() => {
+                              setAiSearchQuery(aiInputValue);
+                              setPage(0);
+                            }}
+                            sx={{ borderRadius: 2, ml: 1, textTransform: 'none' }}
+                          >
+                            AI Ara
+                          </Button>
+                        </InputAdornment>
+                      ),
+                      sx: {
+                        borderRadius: 3,
+                        backgroundColor: '#fff',
+                        border: '2px solid',
+                        borderColor: aiSearchQuery ? 'secondary.main' : 'transparent', // Aktifse çerçeve rengi değişsin
+                        transition: 'all 0.3s ease',
+                        boxShadow: '0 4px 12px rgba(156, 39, 176, 0.15)', // Hafif mor gölge
+                        '&:hover': {
+                           boxShadow: '0 6px 16px rgba(156, 39, 176, 0.25)',
+                        }
+                      }
+                    }}
+                  />
+                  {aiSearchQuery && (
+                    <Typography variant="caption" sx={{ ml: 2, mt: 1, display: 'block', color: 'secondary.main', fontWeight: 'bold' }}>
+                      ✨ "{aiSearchQuery}" için yapay zeka sonuçları gösteriliyor...
+                    </Typography>
+                  )}
+                </Box>
                 <TextField
                   placeholder="Rapor ara..."
                   value={inputValue}

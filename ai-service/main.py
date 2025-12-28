@@ -6,7 +6,7 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 import json
 
-# .env dosyasını yükle (API Key güvenliği için)
+# .env dosyasını yükle
 load_dotenv()
 
 app = FastAPI(title="Report Desk AI Service (Gemini)")
@@ -22,6 +22,10 @@ class AnalysisRequest(BaseModel):
     report_id: int
     file_path: str
     original_name: str
+
+# YENİ: Arama sorgusu için model
+class QueryRequest(BaseModel):
+    text: str
 
 UPLOAD_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "backend", "uploads"))
 
@@ -45,7 +49,6 @@ def summarize_with_gemini(text):
         return {"short": "İçerik çok kısa.", "detailed": "İçerik özet çıkarmak için çok kısa."}
 
     try:
-        # Eski çalışan modelin
         model = genai.GenerativeModel('gemini-flash-latest')       
         
         prompt = f"""
@@ -67,15 +70,12 @@ def summarize_with_gemini(text):
         """
         
         response = model.generate_content(prompt)
-        
-        # Temizlik: Gemini bazen ```json etiketi ekler, bunları temizleyelim
         cleaned_text = response.text.replace("```json", "").replace("```", "").strip()
         
         try:
             return json.loads(cleaned_text)
         except json.JSONDecodeError:
             print("JSON ayrıştırma hatası, düz metin dönülüyor.")
-            # Hata durumunda fallback
             return {
                 "short": response.text[:200] + "...",
                 "detailed": response.text
@@ -83,8 +83,23 @@ def summarize_with_gemini(text):
             
     except Exception as e:
         print(f"Gemini Hatası: {e}")
-        # API hatası durumunda boş dönmemesi için
         return {"short": "AI Servisi Hatası", "detailed": f"Model hatası: {str(e)}"}
+
+# YENİ: Embedding oluşturma fonksiyonu
+def generate_embedding(text):
+    """Metni vektöre çevirir (768 boyutlu)."""
+    try:
+        # Metin çok uzunsa kırpma yapılabilir ama Gemini genelde iyi yönetir
+        result = genai.embed_content(
+            model="models/text-embedding-004",
+            content=text[:9000], # Güvenlik sınırı
+            task_type="retrieval_document",
+            title="Rapor İçeriği"
+        )
+        return result['embedding']
+    except Exception as e:
+        print(f"Embedding Hatası: {e}")
+        return None
 
 @app.post("/analyze")
 async def analyze_report(request: AnalysisRequest):
@@ -99,11 +114,16 @@ async def analyze_report(request: AnalysisRequest):
         extracted_text = extract_text_from_pdf(full_file_path)
     
     summary_result = {"short": "", "detailed": ""}
-    
+    embedding_vector = [] # YENİ
+
     if extracted_text and len(extracted_text) > 30:
-        print("Gemini'ye gönderiliyor...")
+        print("Gemini ile özetleniyor...")
         summary_result = summarize_with_gemini(extracted_text)
-        print("Özet başarıyla alındı.")
+        
+        # YENİ: Embedding oluştur
+        print("Embedding oluşturuluyor...")
+        embedding_vector = generate_embedding(extracted_text)
+        print("Analiz tamamlandı.")
     else:
         summary_result = {"short": "Metin yok.", "detailed": "Okunabilir metin bulunamadı."}
     
@@ -112,8 +132,23 @@ async def analyze_report(request: AnalysisRequest):
         "report_id": request.report_id,
         "text_preview": extracted_text[:100] if extracted_text else "",
         "short_summary": summary_result.get("short"),
-        "detailed_summary": summary_result.get("detailed")
+        "detailed_summary": summary_result.get("detailed"),
+        "embedding": embedding_vector # YENİ: Vektörü backend'e gönderiyoruz
     }
+
+# YENİ: Arama sorgusu için endpoint
+@app.post("/embed-query")
+async def embed_query(request: QueryRequest):
+    try:
+        result = genai.embed_content(
+            model="models/text-embedding-004",
+            content=request.text,
+            task_type="retrieval_query"
+        )
+        return {"embedding": result['embedding']}
+    except Exception as e:
+        print(f"Query Embedding Hatası: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn

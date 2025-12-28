@@ -1,5 +1,6 @@
 import axios from 'axios';
 import Report from '../models/Report.js';
+import sequelize from '../utils/db.js'; // Sequelize import edildi
 
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
@@ -36,23 +37,44 @@ export const triggerAIAnalysis = async (reportData) => {
         aiResult.detailed_summary = detailed;
         aiResult.short_summary = shortS;
 
-        console.log('[AI-Service] Python yanıtı alındı:', { status: response.status, data: aiResult }); // Debug için log ekledik
+        console.log('[AI-Service] Python yanıtı alındı:', { status: response.status, data: aiResult });
 
-        // --- KRİTİK DÜZELTME ---
-        // Python artık 'detailed_summary' ve 'short_summary' gönderiyor.
-        // Bunları veritabanı modelindeki 'aiSummary' ve 'aiSummaryShort' alanlarına eşliyoruz.
-        
+        // Veritabanına kaydetme işlemi
         if (aiResult.detailed_summary || aiResult.short_summary) {
-            // Daha güvenli: önce raporu yükle, alanları set et ve save çağır
-            const report = await Report.findByPk(reportData.id);
-            if (report) {
-                report.aiSummary = typeof aiResult.detailed_summary === 'string' ? aiResult.detailed_summary : String(aiResult.detailed_summary || '');
-                report.aiSummaryShort = typeof aiResult.short_summary === 'string' ? aiResult.short_summary : String(aiResult.short_summary || '');
-                await report.save();
-                console.log(`[AI-Service] BAŞARILI: Rapor ID ${reportData.id} için özetler veritabanına kaydedildi.`);
-            } else {
-                console.error(`[AI-Service] HATA: Rapor bulunamadı: ID ${reportData.id}`);
+            
+            const detailedContent = typeof aiResult.detailed_summary === 'string' ? aiResult.detailed_summary : String(aiResult.detailed_summary || '');
+            const shortContent = typeof aiResult.short_summary === 'string' ? aiResult.short_summary : String(aiResult.short_summary || '');
+            
+            // Embedding dizisini string formatına çevir (pgvector için gerekli format: "[0.1, 0.2, ...]")
+            let embeddingString = null;
+            if (aiResult.embedding && Array.isArray(aiResult.embedding)) {
+                embeddingString = JSON.stringify(aiResult.embedding);
             }
+
+            try {
+                // Raw Query kullanarak güncelleme yapıyoruz (Vector tipi için en güvenli yöntem)
+                await sequelize.query(
+                    `UPDATE reports 
+                     SET ai_summary = :detailed, 
+                         ai_summary_short = :short, 
+                         embedding = :embedding 
+                     WHERE id = :id`,
+                    {
+                        replacements: {
+                            detailed: detailedContent,
+                            short: shortContent,
+                            embedding: embeddingString, // Eğer null ise null kaydedilir
+                            id: reportData.id
+                        }
+                    }
+                );
+                
+                console.log(`[AI-Service] BAŞARILI: Rapor ID ${reportData.id} için özet ve embedding kaydedildi.`);
+                
+            } catch (dbError) {
+                console.error(`[AI-Service] DB Hatası:`, dbError);
+            }
+
         } else {
             console.error('[AI-Service] HATA: Python servisi beklenen özet alanlarını döndürmedi.');
         }
@@ -60,7 +82,7 @@ export const triggerAIAnalysis = async (reportData) => {
         return aiResult;
 
     } catch (error) {
-        // Daha ayrıntılı hata kaydı - axios hatalarında response olabilir
+        // Daha ayrıntılı hata kaydı
         console.error('[AI-Service] Hata:', error.message);
         if (error.response) {
             console.error('[AI-Service] Hata response.data:', error.response.data);

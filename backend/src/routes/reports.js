@@ -12,6 +12,7 @@ import {
   updateBulkReportStatus,
   deleteBulkReports,
   getReportEditStatus,
+  semanticSearch,
 } from '../controllers/reportController.js';
 import upload from '../services/uploadService.js';
 
@@ -175,6 +176,33 @@ router.get('/', authenticateJWT, getAllReports);
  *         description: Yetkilendirme hatası
  */
 router.get('/my', authenticateJWT, getMyReports);
+
+// --- YENİ EKLENEN SEMANTİK ARAMA ROUTE'U ---
+/**
+ * @swagger
+ * /reports/semantic-search:
+ * get:
+ * summary: Yapay zeka destekli semantik arama
+ * tags: [Reports]
+ * security:
+ * - bearerAuth: []
+ * parameters:
+ * - in: query
+ * name: query
+ * required: true
+ * schema:
+ * type: string
+ * description: Aranacak metin (Örn: "Şirketin finansal durumu")
+ * responses:
+ * 200:
+ * description: Başarılı
+ * 400:
+ * description: Arama terimi eksik
+ */
+router.get('/semantic-search', authenticateJWT, semanticSearch);
+// -------------------------------------------
+
+router.get('/download/:filename', authenticateJWT, downloadReportFile);
 
 /**
  * @swagger

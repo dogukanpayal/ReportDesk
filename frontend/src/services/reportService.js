@@ -98,3 +98,10 @@ export async function getReporters() {
     throw error;
   }
 } 
+
+export const semanticSearchReports = async (query) => {
+  const response = await api.get('/reports/semantic-search', {
+    params: { query }
+  });
+  return response.data;
+};

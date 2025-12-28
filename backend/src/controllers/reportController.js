@@ -1,11 +1,12 @@
+import axios from 'axios';
 import Report from '../models/Report.js';
 import User from '../models/User.js';
 import path from 'path';
 import fs from 'fs';
 import { Op } from 'sequelize';
 import sequelize from '../utils/db.js';
-// --- YENİ EKLENEN IMPORT ---
 import { triggerAIAnalysis } from '../services/aiService.js'; 
+
 
 // Bugünün tarihini YYYY-MM-DD formatında al
 function getTodayDate() {
@@ -815,3 +816,76 @@ export async function deleteBulkReports(req, res) {
     res.status(500).json({ message: 'Failed to delete bulk reports' });
   }
 } 
+
+export async function semanticSearch(req, res) {
+    try {
+        const { query } = req.query;
+        if (!query) return res.status(400).json({ message: 'Arama terimi gereklidir.' });
+
+        console.log(`[Semantic-Search] Arama: "${query}"`);
+        const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+        
+        // 1. Python servisinden vektör al
+        let queryVector;
+        try {
+            const aiResponse = await axios.post(`${aiServiceUrl}/embed-query`, { text: query });
+            queryVector = aiResponse.data.embedding;
+        } catch (aiError) {
+            console.error('[Semantic-Search] AI Servisi Hatası:', aiError.message);
+            return res.status(500).json({ message: 'AI servisine ulaşılamadı.' });
+        }
+
+        if (!queryVector) return res.status(500).json({ message: 'Vektör oluşturulamadı.' });
+
+        // 2. Raw SQL Sorgusu (Frontend'in beklediği snake_case isimlerle)
+        // User email'ini de join ile alıyoruz.
+        const vectorString = JSON.stringify(queryVector);
+
+        const results = await sequelize.query(
+            `SELECT 
+                r.id,
+                r.file_path,
+                r.original_file_name,
+                r.ai_summary,
+                r.ai_summary_short,
+                r.created_at,        /* Frontend bunu bekliyor */
+                r.updated_at,
+                r.date,
+                r.status,
+                r.notes,
+                r.uploader_first_name,
+                r.uploader_last_name,
+                r.user_id as "userId",
+                u.email as "user_email", /* Email bilgisini al */
+                1 - (r.embedding <=> :vectorString) as similarity
+             FROM reports r
+             LEFT JOIN users u ON r.user_id = u.id
+             WHERE r.embedding IS NOT NULL 
+               AND (1 - (r.embedding <=> :vectorString)) > 0.40  /* Benzerlik Eşiği */
+             ORDER BY similarity DESC
+             LIMIT 5`,
+            {
+                replacements: { vectorString },
+                type: sequelize.QueryTypes.SELECT
+            }
+        );
+
+        console.log(`[Semantic-Search] ${results.length} sonuç bulundu.`);
+
+        // 3. Frontend Uyumluluk Modu (Mapping)
+        // ReportsTable.js, "report.User.email" şeklinde nested veri bekliyor.
+        const finalResults = results.map(row => ({
+            ...row,
+            // Tablo User.email beklediği için yapay bir User objesi oluşturuyoruz
+            User: {
+                email: row.user_email || 'Email Yok'
+            }
+        }));
+
+        res.json(finalResults);
+
+    } catch (error) {
+        console.error('[Semantic-Search] Kritik Hata:', error);
+        res.status(500).json({ message: 'Arama işleminde hata oluştu.', error: error.message });
+    }
+}
