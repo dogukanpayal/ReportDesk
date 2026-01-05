@@ -70,6 +70,8 @@ def summarize_with_gemini(text):
         2. "detailed" kısmı: BURASI ÇOK ÖNEMLİ. Asla kısa kesme. Metni kurumsal bir rapor formatında, Türkçe olarak, maddeler halinde detaylandırarak yaz.
         3. "keywords" kısmı: Metnin içeriğini en iyi yansıtan, aranabilirliği yüksek 5 ila 7 adet teknik terim veya konuyu içeren bir String Listesi (Array) olsun.
         4. Sadece saf JSON döndür. Markdown etiketi (```json) kullanma.
+        5. "sentiment_label": "Positive" veya "Negative" veya "Neutral",
+        6. "sentiment_score": 1 ile 10 arasında bir tam sayı
         
         Rapor Metni:
         {text}
@@ -142,7 +144,9 @@ async def analyze_report(request: AnalysisRequest):
         "short_summary": summary_result.get("short"),
         "detailed_summary": summary_result.get("detailed"),
         "keywords": summary_result.get("keywords", []), # YENİ: Anahtar kelimeler eklendi
-        "embedding": embedding_vector 
+        "embedding": embedding_vector,
+        "sentiment_label": summary_result.get("sentiment_label"), # EKLE
+        "sentiment_score": summary_result.get("sentiment_score")  # EKLE
     }
 
 # YENİ: Arama sorgusu için endpoint

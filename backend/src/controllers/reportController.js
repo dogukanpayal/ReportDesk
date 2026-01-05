@@ -794,3 +794,42 @@ export async function semanticSearch(req, res) {
         res.status(500).json({ message: 'Arama işleminde hata oluştu.', error: error.message });
     }
 }
+
+// getDashboardStats fonksiyonunu bu içerikle tamamen değiştir
+export async function getDashboardStats(req, res) {
+  try {
+    // 1. Duygu Analizi Sayıları (Eşlemeyi garantili hale getiriyoruz)
+    const sentimentResults = await Report.findAll({
+      attributes: [
+        'sentiment_label', 
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
+      ],
+      group: ['sentiment_label'],
+      raw: true
+    });
+
+    const sentimentCounts = sentimentResults.map(item => ({
+      sentimentLabel: item.sentiment_label || 'Neutral',
+      count: parseInt(item.count || 0)
+    }));
+
+    // 2. Kelime Bulutu Verisi
+    const reports = await Report.findAll({ attributes: ['ai_keywords'], raw: true });
+    const tagMap = {};
+    reports.forEach(r => {
+      const tags = r.ai_keywords || [];
+      tags.forEach(tag => { tagMap[tag] = (tagMap[tag] || 0) + 1; });
+    });
+
+    const wordCloud = Object.entries(tagMap)
+      .map(([text, value]) => ({ text, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 15);
+
+    console.log('[Dashboard-Stats] Veri Gönderiliyor:', { sentimentCounts });
+    res.json({ sentimentCounts, wordCloud });
+  } catch (error) {
+    console.error('[Dashboard-Stats] Hata:', error);
+    res.status(500).json({ message: 'İstatistik hatası' });
+  }
+}

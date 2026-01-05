@@ -52,6 +52,16 @@ const Report = sequelize.define('Report', {
     defaultValue: [],
     field: 'ai_keywords'
   },
+  sentimentLabel: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    field: 'sentiment_label'
+  },
+  sentimentScore: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'sentiment_score'
+  },
   date: {
     type: DataTypes.DATEONLY,
     allowNull: false,
@@ -79,6 +89,7 @@ const Report = sequelize.define('Report', {
     field: 'updated_at',
     defaultValue: null,
   },
+  
 }, {
   tableName: 'reports',
   timestamps: false,

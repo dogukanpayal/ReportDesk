@@ -63,7 +63,9 @@ export const triggerAIAnalysis = async (reportData) => {
                      SET ai_summary = :detailed, 
                          ai_summary_short = :short, 
                          ai_keywords = :keywords,
-                         embedding = :embedding 
+                         embedding = :embedding,
+                         sentiment_label = :sentiment_label,  
+                         sentiment_score = :sentiment_score
                      WHERE id = :id`,
                     {
                         replacements: {
@@ -71,13 +73,14 @@ export const triggerAIAnalysis = async (reportData) => {
                             short: shortContent,
                             keywords: keywordsString, // YENİ: Anahtar kelimeler
                             embedding: embeddingString, // Eğer null ise null kaydedilir
+                            sentiment_label: aiResult.sentiment_label || 'Neutral', // YENİ
+                            sentiment_score: aiResult.sentiment_score || 5,        // YENİ
                             id: reportData.id
                         }
                     }
                 );
                 
-                console.log(`[AI-Service] BAŞARILI: Rapor ID ${reportData.id} için özet, embedding ve anahtar kelimeler kaydedildi.`);
-                
+                    console.log(`[AI-Service] BAŞARILI: Rapor ID ${reportData.id} için DUYGU ANALİZİ dahil tüm veriler kaydedildi.`);                
             } catch (dbError) {
                 console.error(`[AI-Service] DB Hatası:`, dbError);
             }
